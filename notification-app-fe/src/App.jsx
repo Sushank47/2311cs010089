@@ -27,7 +27,13 @@ import {
   DialogActions,
   TextField,
   Tooltip,
-  Pagination
+  Pagination,
+  Drawer,
+  Divider,
+  LinearProgress,
+  Skeleton,
+  InputAdornment,
+  Slider
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
@@ -36,7 +42,13 @@ import {
   AddAlert as AddAlertIcon,
   Wifi as WifiIcon,
   WifiOff as WifiOffIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Search as SearchIcon,
+  Launch as LaunchIcon,
+  TrendingUp as TrendingUpIcon,
+  AssignmentTurnedIn as AssignmentTurnedInIcon,
+  EventNote as EventNoteIcon,
+  VolumeUp as VolumeUpIcon
 } from '@mui/icons-material';
 import { io } from 'socket.io-client';
 import {
@@ -46,56 +58,57 @@ import {
   createNotification
 } from './services/api';
 
-// Create a custom dark premium theme matching Stage 6 styling
+// Premium cosmic dark theme with high contrast primary/secondary gradients
 const theme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#00f2fe', // Electric cyan
+      main: '#00f2fe', // Electric Cyan
     },
     secondary: {
-      main: '#4facfe', // Ice blue
+      main: '#9d4edd', // Vibrant Neon Purple
     },
     background: {
-      default: '#080d1a', // Deep cosmic midnight blue
-      paper: 'rgba(16, 24, 48, 0.75)' // Glassmorphism dark background
+      default: '#0a0e1a', // Cosmic Midnight
+      paper: 'rgba(16, 24, 48, 0.8)' // Frosted Glass
     },
     text: {
-      primary: '#f0f4f8',
-      secondary: '#90a4ae'
+      primary: '#f1f5f9',
+      secondary: '#94a3b8'
     }
   },
   typography: {
-    fontFamily: '"Outfit", "Inter", "Roboto", sans-serif',
+    fontFamily: '"Outfit", "Inter", sans-serif',
     h4: {
-      fontWeight: 700,
+      fontWeight: 800,
       letterSpacing: '0.05em'
     },
     h6: {
-      fontWeight: 600
+      fontWeight: 700
     }
   },
   components: {
     MuiPaper: {
       styleOverrides: {
         root: {
-          backdropFilter: 'blur(16px)',
+          backdropFilter: 'blur(20px)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+          boxShadow: '0 10px 40px 0 rgba(0, 0, 0, 0.45)'
         }
       }
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
-          background: 'rgba(22, 34, 64, 0.5)',
-          borderRadius: '12px',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          background: 'rgba(20, 30, 60, 0.4)',
+          borderRadius: '16px',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
           overflow: 'hidden',
           '&:hover': {
-            transform: 'translateY(-3px)',
-            boxShadow: '0 12px 24px rgba(0, 242, 254, 0.15)',
-            borderColor: 'rgba(0, 242, 254, 0.3)'
+            transform: 'translateY(-4px) scale(1.01)',
+            boxShadow: '0 20px 30px rgba(0, 242, 254, 0.12)',
+            borderColor: 'rgba(0, 242, 254, 0.25)'
           }
         }
       }
@@ -109,33 +122,68 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Filter & Pagination States
+  // Filters, Search & Pagination States
   const [category, setCategory] = useState('');
   const [limit, setLimit] = useState(10);
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
   const [totalItems, setTotalItems] = useState(0);
 
   // WebSockets State
   const [socketConnected, setSocketConnected] = useState(false);
 
-  // Admin New Announcement Dialog State
+  // Metrics states
+  const [stats, setStats] = useState({ placement: 0, result: 0, event: 0 });
+
+  // Detail Drawer State
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Sound effects status
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Admin Announcement Dialog States
   const [openDialog, setOpenDialog] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [newType, setNewType] = useState('Placement');
+  const [newPriority, setNewPriority] = useState(50); // Slider: 0=Low, 50=Medium, 75=High, 100=Critical
 
-  // Real-time toast states
+  // Live Toast Snackbars
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
   const socketRef = useRef(null);
 
-  // 1. Initialize API Fetch
+  // Synthesize soft high-frequency bubble notification sound
+  const playSoundAlert = () => {
+    if (!soundEnabled) return;
+    try {
+      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, context.currentTime); // High pitch A note
+      osc.frequency.exponentialRampToValueAtTime(1320, context.currentTime + 0.15); // Slide up
+      
+      gain.gain.setValueAtTime(0.15, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.25);
+      
+      osc.connect(gain);
+      gain.connect(context.destination);
+      
+      osc.start();
+      osc.stop(context.currentTime + 0.3);
+    } catch (e) {
+      console.warn('Audio synthesis failed:', e);
+    }
+  };
+
+  // 1. Fetch data from backend
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Pass standard expanded query parameters to backend
       const data = await fetchNotifications({
         limit,
         page,
@@ -145,10 +193,16 @@ export default function App() {
         setNotifications(data.data.notifications || []);
         setUnreadCount(data.data.unreadCount || 0);
         setTotalItems(data.data.totalItems || 0);
+
+        // Calculate analytics stats dynamically
+        const placementCount = (data.data.notifications || []).filter(n => n.type === 'Placement').length;
+        const resultCount = (data.data.notifications || []).filter(n => n.type === 'Result').length;
+        const eventCount = (data.data.notifications || []).filter(n => n.type === 'Event').length;
+        setStats({ placement: placementCount, result: resultCount, event: eventCount });
       }
     } catch (err) {
       console.error(err);
-      setError('Could not load notifications from backend.');
+      setError('Could not establish secure data connection to the server.');
     } finally {
       setLoading(false);
     }
@@ -158,7 +212,7 @@ export default function App() {
     loadData();
   }, [category, limit, page]);
 
-  // 2. Setup WebSockets connection
+  // 2. Initialize WebSockets connections
   useEffect(() => {
     socketRef.current = io('http://localhost:5001', {
       transports: ['websocket', 'polling']
@@ -172,16 +226,13 @@ export default function App() {
       setSocketConnected(false);
     });
 
-    // Handle incoming real-time updates broadcasted by backend
     socketRef.current.on('new-notification', (newNotification) => {
-      // Trigger toast message
+      playSoundAlert();
       setToastMessage(newNotification);
       setToastOpen(true);
 
-      // Prepend to current notification list
       setNotifications(prev => {
         const merged = [newNotification, ...prev];
-        // Sort the list applying the priority rules (Placement > Result > Event)
         const weightMap = { placement: 3, result: 2, event: 1 };
         merged.sort((a, b) => {
           const wA = weightMap[a.type.toLowerCase()] || 0;
@@ -192,7 +243,6 @@ export default function App() {
         return merged.slice(0, limit);
       });
 
-      // Increment badge count
       setUnreadCount(prev => prev + 1);
       setTotalItems(prev => prev + 1);
     });
@@ -202,9 +252,9 @@ export default function App() {
         socketRef.current.disconnect();
       }
     };
-  }, [limit]);
+  }, [limit, soundEnabled]);
 
-  // 3. Mark Single as Read
+  // 3. Mark alert as Read
   const handleMarkAsRead = async (id) => {
     try {
       const resp = await markNotificationAsRead(id);
@@ -213,9 +263,12 @@ export default function App() {
           prev.map(item => (item._id === id ? { ...item, isRead: true } : item))
         );
         setUnreadCount(prev => Math.max(0, prev - 1));
+        if (selectedItem && selectedItem._id === id) {
+          setSelectedItem(prev => ({ ...prev, isRead: true }));
+        }
       }
     } catch (err) {
-      console.error('Failed to mark read:', err);
+      console.error('Failed to update alert:', err);
     }
   };
 
@@ -226,9 +279,12 @@ export default function App() {
       if (resp.success) {
         setNotifications(prev => prev.map(item => ({ ...item, isRead: true })));
         setUnreadCount(0);
+        if (selectedItem) {
+          setSelectedItem(prev => ({ ...prev, isRead: true }));
+        }
       }
     } catch (err) {
-      console.error('Failed to mark all read:', err);
+      console.error('Bulk read error:', err);
     }
   };
 
@@ -237,57 +293,77 @@ export default function App() {
     e.preventDefault();
     if (!newTitle.trim() || !newMessage.trim()) return;
 
+    let priorityLabel = 'Medium';
+    if (newPriority <= 25) priorityLabel = 'Low';
+    else if (newPriority <= 50) priorityLabel = 'Medium';
+    else if (newPriority <= 75) priorityLabel = 'High';
+    else priorityLabel = 'Critical';
+
     try {
       const resp = await createNotification({
         title: newTitle,
         message: newMessage,
-        type: newType
+        type: newType,
+        priority: priorityLabel
       });
       if (resp.success) {
         setOpenDialog(false);
         setNewTitle('');
         setNewMessage('');
-        // Trigger a fresh reload to get accurate states
+        setNewPriority(50);
         loadData();
       }
     } catch (err) {
-      console.error('Failed to publish notification:', err);
+      console.error('Publish error:', err);
     }
   };
 
-  // Custom styling helper for Category borders/chips
+  // Colors & styles helper
   const getCategoryColor = (type) => {
     switch (type.toLowerCase()) {
       case 'placement':
-        return '#2979ff'; // Cobalt Blue
+        return '#00f2fe'; // Neon Electric Blue
       case 'result':
-        return '#00e676'; // Emerald Green
+        return '#00e676'; // Emerald green
       case 'event':
-        return '#ff9100'; // Amber Orange
+        return '#ff9100'; // Hot amber
       default:
-        return '#90a4ae';
+        return '#94a3b8';
     }
   };
+
+  // Live filter keyword check
+  const filteredNotifications = notifications.filter(item => {
+    const term = searchQuery.toLowerCase().trim();
+    if (!term) return true;
+    return (
+      item.title.toLowerCase().includes(term) ||
+      item.message.toLowerCase().includes(term)
+    );
+  });
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', py: 4, px: 2 }}>
+      <Box sx={{ minHeight: '100vh', py: 4, px: { xs: 1, sm: 3 } }}>
         <Container maxWidth="lg">
-          {/* Dashboard Header Bar */}
+          
+          {/* 🌟 Navigation Bar */}
           <Paper
             elevation={3}
             sx={{
               p: 3,
               mb: 4,
-              borderRadius: '16px',
+              borderRadius: '20px',
               display: 'flex',
+              flexDirection: { xs: 'column', md: 'row' },
               alignItems: 'center',
+              gap: 2,
               justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, rgba(16, 24, 48, 0.9) 0%, rgba(8, 13, 26, 0.9) 100%)'
+              background: 'linear-gradient(135deg, rgba(20, 30, 60, 0.7) 0%, rgba(10, 14, 26, 0.8) 100%)'
             }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2.5} alignItems="center">
               <Badge
                 badgeContent={unreadCount}
                 color="error"
@@ -296,27 +372,32 @@ export default function App() {
                     fontSize: '0.85rem',
                     height: 22,
                     minWidth: 22,
-                    borderRadius: 11
+                    borderRadius: 11,
+                    boxShadow: '0 0 10px rgba(211, 47, 47, 0.8)'
                   }
                 }}
               >
-                <NotificationsIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+                <NotificationsIcon sx={{ fontSize: 36, color: 'primary.main' }} />
               </Badge>
               <Box>
-                <Typography variant="h5" sx={{ background: 'linear-gradient(90deg, #00f2fe 0%, #4facfe 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 800 }}>
+                <Typography variant="h4" sx={{ background: 'linear-gradient(90deg, #00f2fe 0%, #9d4edd 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 900 }}>
                   CAMPUS PULSE
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Priority Inbox Dashboard
+                  Real-Time Academic Alerts & Priority Inbox
                 </Typography>
               </Box>
             </Stack>
 
-            <Stack direction="row" spacing={2} alignItems="center">
-              {/* Live WebSockets Status Indicator */}
+            <Stack direction="row" spacing={2} sx={{ width: { xs: '100%', md: 'auto' }, justifyContent: 'flex-end' }}>
+              <Tooltip title={soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}>
+                <IconButton onClick={() => setSoundEnabled(!soundEnabled)} color="secondary">
+                  <VolumeUpIcon sx={{ opacity: soundEnabled ? 1 : 0.4 }} />
+                </IconButton>
+              </Tooltip>
               <Chip
                 icon={socketConnected ? <WifiIcon color="success" /> : <WifiOffIcon color="error" />}
-                label={socketConnected ? 'Real-Time Connected' : 'Offline Mode'}
+                label={socketConnected ? 'Connected' : 'Offline'}
                 color={socketConnected ? 'success' : 'error'}
                 variant="outlined"
                 size="small"
@@ -325,27 +406,63 @@ export default function App() {
                 <RefreshIcon />
               </IconButton>
               <Button
-                variant="outlined"
-                color="primary"
+                variant="contained"
+                color="secondary"
                 startIcon={<AddAlertIcon />}
                 onClick={() => setOpenDialog(true)}
+                sx={{ borderRadius: '10px' }}
               >
                 Publish Alert
               </Button>
             </Stack>
           </Paper>
 
-          {/* Main Layout Grid */}
+          {/* 🌟 Analytics KPI Widgets */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={4}>
+              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(0, 242, 254, 0.04)' }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Placements</Typography>
+                  <TrendingUpIcon sx={{ color: '#00f2fe' }} />
+                </Stack>
+                <Typography variant="h4" sx={{ my: 1, fontWeight: 800 }}>{stats.placement}</Typography>
+                <LinearProgress variant="determinate" value={Math.min((stats.placement / 10) * 100, 100)} color="primary" sx={{ height: 6, borderRadius: 3 }} />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(0, 230, 118, 0.04)' }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Exam Results</Typography>
+                  <AssignmentTurnedInIcon sx={{ color: '#00e676' }} />
+                </Stack>
+                <Typography variant="h4" sx={{ my: 1, fontWeight: 800 }}>{stats.result}</Typography>
+                <LinearProgress variant="determinate" value={Math.min((stats.result / 10) * 100, 100)} color="success" sx={{ height: 6, borderRadius: 3 }} />
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(255, 145, 0, 0.04)' }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Events</Typography>
+                  <EventNoteIcon sx={{ color: '#ff9100' }} />
+                </Stack>
+                <Typography variant="h4" sx={{ my: 1, fontWeight: 800 }}>{stats.event}</Typography>
+                <LinearProgress variant="determinate" value={Math.min((stats.event / 10) * 100, 100)} color="warning" sx={{ height: 6, borderRadius: 3 }} />
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Main Dashboard Layout */}
           <Grid container spacing={4}>
-            {/* Control Sidebar Panel */}
+            
+            {/* 🌟 Left control panel */}
             <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+              <Paper sx={{ p: 3, borderRadius: '16px' }}>
                 <Typography variant="h6" sx={{ mb: 3, color: 'primary.main' }}>
-                  Filter Notifications
+                  Feed Settings
                 </Typography>
 
-                <Stack spacing={3}>
-                  {/* Category Type Filter */}
+                <Stack spacing={3.5}>
+                  {/* Category Type Selector */}
                   <FormControl fullWidth size="small">
                     <InputLabel id="category-filter-label">Category</InputLabel>
                     <Select
@@ -366,162 +483,275 @@ export default function App() {
 
                   {/* Limit Query Selector */}
                   <FormControl fullWidth size="small">
-                    <InputLabel id="limit-select-label">Notifications to Display</InputLabel>
+                    <InputLabel id="limit-select-label">Display Limit</InputLabel>
                     <Select
                       labelId="limit-select-label"
                       value={limit}
-                      label="Notifications to Display"
+                      label="Display Limit"
                       onChange={(e) => {
                         setLimit(e.target.value);
                         setPage(1);
                       }}
                     >
-                      <MenuItem value={5}>Top 5 Notifications</MenuItem>
-                      <MenuItem value={10}>Top 10 Notifications</MenuItem>
-                      <MenuItem value={25}>Top 25 Notifications</MenuItem>
-                      <MenuItem value={50}>Top 50 Notifications</MenuItem>
+                      <MenuItem value={5}>Top 5 Alerts</MenuItem>
+                      <MenuItem value={10}>Top 10 Alerts</MenuItem>
+                      <MenuItem value={25}>Top 25 Alerts</MenuItem>
+                      <MenuItem value={50}>Top 50 Alerts</MenuItem>
                     </Select>
                   </FormControl>
 
-                  <Box sx={{ pt: 2 }}>
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="secondary"
-                      startIcon={<DoneAllIcon />}
-                      onClick={handleMarkAllRead}
-                      disabled={unreadCount === 0}
-                    >
-                      Mark All as Read
-                    </Button>
-                  </Box>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={<DoneAllIcon />}
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0}
+                    sx={{ borderRadius: '10px', py: 1 }}
+                  >
+                    Mark All as Read
+                  </Button>
                 </Stack>
               </Paper>
             </Grid>
 
-            {/* Main Notifications Stack */}
+            {/* 🌟 Right main priority feed */}
             <Grid item xs={12} md={8}>
-              {error && (
-                <Alert severity="error" sx={{ mb: 3, borderRadius: '12px' }}>
-                  {error}
-                </Alert>
-              )}
+              <Stack spacing={3}>
+                
+                {/* Search Text Input */}
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  placeholder="Search notifications by title or keyword..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: 'text.secondary' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    background: 'rgba(255,255,255,0.01)',
+                    borderRadius: '10px',
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '10px'
+                    }
+                  }}
+                />
 
-              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Priority Feed</span>
-                <Typography variant="body2" color="text.secondary">
-                  Showing {notifications.length} of {totalItems} items
-                </Typography>
-              </Typography>
-
-              {loading && notifications.length === 0 ? (
-                <Typography color="text.secondary">Loading notifications...</Typography>
-              ) : notifications.length === 0 ? (
-                <Paper sx={{ p: 4, text: 'center', borderRadius: '16px', background: 'rgba(255,255,255,0.02)' }}>
-                  <Typography variant="body1" align="center" color="text.secondary">
-                    No active notifications matching selected filter criteria.
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Priority Inbox feed</span>
+                  <Typography variant="body2" color="text.secondary">
+                    Displaying {filteredNotifications.length} items
                   </Typography>
-                </Paper>
-              ) : (
-                <Stack spacing={2}>
-                  {notifications.map((item) => {
-                    const borderCol = getCategoryColor(item.type);
-                    return (
-                      <Card
-                        key={item._id}
-                        variant="outlined"
-                        sx={{
-                          borderLeft: `5px solid ${borderCol}`,
-                          opacity: item.isRead ? 0.65 : 1,
-                          borderColor: item.isRead ? 'rgba(255, 255, 255, 0.08)' : borderCol,
-                          background: item.isRead 
-                            ? 'rgba(16, 24, 48, 0.3)' 
-                            : 'rgba(22, 34, 64, 0.5)'
-                        }}
-                      >
-                        <CardContent sx={{ position: 'relative', pr: 8, '&:last-child': { pb: 2 } }}>
-                          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-                            <Chip
-                              label={item.type}
-                              size="small"
-                              sx={{
-                                backgroundColor: `${borderCol}22`,
-                                color: borderCol,
-                                fontWeight: 700,
-                                fontSize: '0.75rem',
-                                border: `1px solid ${borderCol}44`
-                              }}
-                            />
-                            
-                            {/* Distinguish unread state with dynamic glowing text indicator */}
-                            {!item.isRead && (
+                </Typography>
+
+                {loading && filteredNotifications.length === 0 ? (
+                  <Stack spacing={2}>
+                    <Skeleton variant="rectangular" height={100} sx={{ borderRadius: '16px' }} />
+                    <Skeleton variant="rectangular" height={100} sx={{ borderRadius: '16px' }} />
+                    <Skeleton variant="rectangular" height={100} sx={{ borderRadius: '16px' }} />
+                  </Stack>
+                ) : filteredNotifications.length === 0 ? (
+                  <Paper sx={{ p: 5, textAlign: 'center', borderRadius: '16px', background: 'rgba(255,255,255,0.01)' }}>
+                    <Typography variant="body1" color="text.secondary">
+                      No matching notifications found in this feed view.
+                    </Typography>
+                  </Paper>
+                ) : (
+                  <Stack spacing={2.5}>
+                    {filteredNotifications.map((item) => {
+                      const color = getCategoryColor(item.type);
+                      return (
+                        <Card
+                          key={item._id}
+                          variant="outlined"
+                          onClick={() => setSelectedItem(item)} // Clicking slides open details Drawer
+                          sx={{
+                            borderLeft: `5px solid ${color}`,
+                            opacity: item.isRead ? 0.6 : 1,
+                            cursor: 'pointer',
+                            borderColor: item.isRead ? 'rgba(255,255,255,0.08)' : color,
+                            background: item.isRead ? 'rgba(16, 24, 48, 0.25)' : 'rgba(20, 30, 60, 0.45)'
+                          }}
+                        >
+                          <CardContent sx={{ position: 'relative', pr: 8, '&:last-child': { pb: 2.5 } }}>
+                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
                               <Chip
-                                label="New"
-                                color="error"
+                                label={item.type}
                                 size="small"
                                 sx={{
-                                  height: 18,
-                                  fontSize: '0.65rem',
-                                  fontWeight: 900,
-                                  animation: 'pulse-glow 1.5s infinite alternate'
+                                  backgroundColor: `${color}18`,
+                                  color,
+                                  fontWeight: 800,
+                                  fontSize: '0.75rem',
+                                  border: `1px solid ${color}44`
                                 }}
                               />
-                            )}
+                              {!item.isRead && (
+                                <Chip
+                                  label="New"
+                                  color="error"
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '0.65rem',
+                                    fontWeight: 900,
+                                    animation: 'pulse-glow 1.5s infinite alternate'
+                                  }}
+                                />
+                              )}
+                              <Typography variant="caption" color="text.secondary">
+                                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.createdAt).toLocaleDateString()}
+                              </Typography>
+                            </Stack>
 
-                            <Typography variant="caption" color="text.secondary">
-                              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.createdAt).toLocaleDateString()}
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, color: item.isRead ? 'text.secondary' : 'text.primary' }}>
+                              {item.title}
                             </Typography>
-                          </Stack>
+                            
+                            <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: '85%' }}>
+                              {item.message}
+                            </Typography>
 
-                          <Typography variant="subtitle1" component="div" sx={{ fontWeight: 700, mb: 0.5, color: item.isRead ? 'text.secondary' : 'text.primary' }}>
-                            {item.title}
-                          </Typography>
-                          
-                          <Typography variant="body2" color="text.secondary">
-                            {item.message}
-                          </Typography>
+                            {/* Mark single as read */}
+                            {!item.isRead && (
+                              <Box
+                                sx={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Avoid triggering details Drawer
+                                  handleMarkAsRead(item._id);
+                                }}
+                              >
+                                <Tooltip title="Mark read">
+                                  <IconButton color="primary">
+                                    <CheckCircleIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </Stack>
+                )}
 
-                          {/* Quick single-click read tracker action */}
-                          {!item.isRead && (
-                            <Box sx={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
-                              <Tooltip title="Mark as read">
-                                <IconButton
-                                  onClick={() => handleMarkAsRead(item._id)}
-                                  color="primary"
-                                  sx={{ '&:hover': { color: 'success.main' } }}
-                                >
-                                  <CheckCircleIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Stack>
-              )}
+                {/* Pagination count */}
+                {totalItems > limit && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                    <Pagination
+                      count={Math.ceil(totalItems / limit)}
+                      page={page}
+                      onChange={(e, v) => setPage(v)}
+                      color="primary"
+                    />
+                  </Box>
+                )}
 
-              {/* Pagination Controls */}
-              {totalItems > limit && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-                  <Pagination
-                    count={Math.ceil(totalItems / limit)}
-                    page={page}
-                    onChange={(e, v) => setPage(v)}
-                    color="primary"
-                  />
-                </Box>
-              )}
+              </Stack>
             </Grid>
           </Grid>
 
-          {/* Dialog to Publish Announcement */}
+          {/* 🌟 Detail Drawer (Slide-Out Side Panel) */}
+          <Drawer
+            anchor="right"
+            open={Boolean(selectedItem)}
+            onClose={() => setSelectedItem(null)}
+            PaperProps={{
+              sx: { width: { xs: '100%', sm: 420 }, p: 4, background: '#0e1424' }
+            }}
+          >
+            {selectedItem && (
+              <Stack spacing={3}>
+                <Box>
+                  <Chip
+                    label={selectedItem.type}
+                    sx={{
+                      backgroundColor: `${getCategoryColor(selectedItem.type)}22`,
+                      color: getCategoryColor(selectedItem.type),
+                      fontWeight: 800,
+                      mb: 2
+                    }}
+                  />
+                  <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+                    {selectedItem.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Received: {new Date(selectedItem.createdAt).toLocaleString()}
+                  </Typography>
+                </Box>
+                
+                <Divider />
+
+                <Box sx={{ py: 2 }}>
+                  <Typography variant="body1" color="text.primary" sx={{ lineHeight: 1.8 }}>
+                    {selectedItem.message}
+                  </Typography>
+                </Box>
+
+                <Divider />
+
+                <Stack spacing={2} direction="row">
+                  {/* Dynamic Action Buttons */}
+                  {selectedItem.type === 'Placement' && (
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      color="primary"
+                      endIcon={<LaunchIcon />}
+                      onClick={() => alert('Redirecting to Placement Application Portal...')}
+                    >
+                      Apply Now
+                    </Button>
+                  )}
+                  {selectedItem.type === 'Result' && (
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      color="success"
+                      endIcon={<LaunchIcon />}
+                      onClick={() => alert('Loading Exam Marksheets PDF...')}
+                    >
+                      View Report
+                    </Button>
+                  )}
+                  {selectedItem.type === 'Event' && (
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      color="warning"
+                      endIcon={<LaunchIcon />}
+                      onClick={() => alert('Registering Seat Booking...')}
+                    >
+                      Register Now
+                    </Button>
+                  )}
+
+                  {!selectedItem.isRead && (
+                    <Button
+                      variant="outlined"
+                      color="primary"
+                      onClick={() => handleMarkAsRead(selectedItem._id)}
+                    >
+                      Mark Read
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
+            )}
+          </Drawer>
+
+          {/* dialog to publish alert */}
           <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
             <form onSubmit={handleCreateAnnouncement}>
               <DialogTitle>Publish New Alert</DialogTitle>
               <DialogContent dividers>
-                <Stack spacing={3} sx={{ mt: 1 }}>
+                <Stack spacing={3.5} sx={{ mt: 1 }}>
                   <TextField
                     label="Announcement Title"
                     required
@@ -551,12 +781,32 @@ export default function App() {
                       <MenuItem value="Event">Campus Event</MenuItem>
                     </Select>
                   </FormControl>
+
+                  {/* Priority slider */}
+                  <Box>
+                    <Typography id="priority-slider" gutterBottom variant="body2" color="text.secondary">
+                      Priority Level Previews
+                    </Typography>
+                    <Slider
+                      value={newPriority}
+                      onChange={(e, v) => setNewPriority(v)}
+                      aria-labelledby="priority-slider"
+                      step={25}
+                      marks={[
+                        { value: 0, label: 'Low' },
+                        { value: 50, label: 'Medium' },
+                        { value: 75, label: 'High' },
+                        { value: 100, label: 'Critical' }
+                      ]}
+                      valueLabelDisplay="off"
+                    />
+                  </Box>
                 </Stack>
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
                 <Button type="submit" variant="contained" color="primary">
-                  Broadcast Alert
+                  Broadcast Announcement
                 </Button>
               </DialogActions>
             </form>
@@ -578,7 +828,7 @@ export default function App() {
               {toastMessage && (
                 <Box>
                   <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                    ⚡ Live Alert: {toastMessage.type}
+                    ⚡ Real-time Alert: {toastMessage.type}
                   </Typography>
                   <Typography variant="body2">
                     {toastMessage.message}
@@ -587,14 +837,15 @@ export default function App() {
               )}
             </Alert>
           </Snackbar>
+
         </Container>
       </Box>
 
-      {/* Global pulse glow animations inside styles */}
+      {/* Global CSS animations style rules */}
       <style>{`
         @keyframes pulse-glow {
           0% {
-            box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.4);
+            box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.45);
           }
           100% {
             box-shadow: 0 0 0 8px rgba(211, 47, 47, 0);

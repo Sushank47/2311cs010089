@@ -380,7 +380,7 @@ export default function App() {
                 <NotificationsIcon sx={{ fontSize: 36, color: 'primary.main' }} />
               </Badge>
               <Box>
-                <Typography variant="h4" sx={{ background: 'linear-gradient(90deg, #00f2fe 0%, #9d4edd 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 900 }}>
+                <Typography variant="h4" sx={{ fontSize: { xs: '1.65rem', sm: '2.125rem' }, background: 'linear-gradient(90deg, #00f2fe 0%, #9d4edd 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 900 }}>
                   CAMPUS PULSE
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -389,7 +389,7 @@ export default function App() {
               </Box>
             </Stack>
 
-            <Stack direction="row" spacing={2} sx={{ width: { xs: '100%', md: 'auto' }, justifyContent: 'flex-end' }}>
+            <Stack direction="row" spacing={2} sx={{ width: { xs: '100%', md: 'auto' }, justifyContent: { xs: 'center', md: 'flex-end' }, flexWrap: 'wrap', gap: 1 }}>
               <Tooltip title={soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}>
                 <IconButton onClick={() => setSoundEnabled(!soundEnabled)} color="secondary">
                   <VolumeUpIcon sx={{ opacity: soundEnabled ? 1 : 0.4 }} />
@@ -420,7 +420,7 @@ export default function App() {
           {/* 🌟 Analytics KPI Widgets */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12} sm={4}>
-              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(0, 242, 254, 0.04)' }}>
+              <Paper sx={{ p: 2.5, borderRadius: '16px', background: 'rgba(0, 242, 254, 0.04)' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">Placements</Typography>
                   <TrendingUpIcon sx={{ color: '#00f2fe' }} />
@@ -430,7 +430,7 @@ export default function App() {
               </Paper>
             </Grid>
             <Grid item xs={12} sm={4}>
-              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(0, 230, 118, 0.04)' }}>
+              <Paper sx={{ p: 2.5, borderRadius: '16px', background: 'rgba(0, 230, 118, 0.04)' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">Exam Results</Typography>
                   <AssignmentTurnedInIcon sx={{ color: '#00e676' }} />
@@ -440,7 +440,7 @@ export default function App() {
               </Paper>
             </Grid>
             <Grid item xs={12} sm={4}>
-              <Paper sx={{ p: 2,.5, borderRadius: '16px', background: 'rgba(255, 145, 0, 0.04)' }}>
+              <Paper sx={{ p: 2.5, borderRadius: '16px', background: 'rgba(255, 145, 0, 0.04)' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">Events</Typography>
                   <EventNoteIcon sx={{ color: '#ff9100' }} />
@@ -579,61 +579,65 @@ export default function App() {
                             background: item.isRead ? 'rgba(16, 24, 48, 0.25)' : 'rgba(20, 30, 60, 0.45)'
                           }}
                         >
-                          <CardContent sx={{ position: 'relative', pr: 8, '&:last-child': { pb: 2.5 } }}>
-                            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5 }}>
-                              <Chip
-                                label={item.type}
-                                size="small"
-                                sx={{
-                                  backgroundColor: `${color}18`,
-                                  color,
-                                  fontWeight: 800,
-                                  fontSize: '0.75rem',
-                                  border: `1px solid ${color}44`
-                                }}
-                              />
-                              {!item.isRead && (
-                                <Chip
-                                  label="New"
-                                  color="error"
-                                  size="small"
-                                  sx={{
-                                    height: 18,
-                                    fontSize: '0.65rem',
-                                    fontWeight: 900,
-                                    animation: 'pulse-glow 1.5s infinite alternate'
-                                  }}
-                                />
-                              )}
-                              <Typography variant="caption" color="text.secondary">
-                                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.createdAt).toLocaleDateString()}
-                              </Typography>
-                            </Stack>
+                          <CardContent sx={{ '&:last-child': { pb: 2.5 } }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                                  <Chip
+                                    label={item.type}
+                                    size="small"
+                                    sx={{
+                                      backgroundColor: `${color}18`,
+                                      color,
+                                      fontWeight: 800,
+                                      fontSize: '0.75rem',
+                                      border: `1px solid ${color}44`
+                                    }}
+                                  />
+                                  {!item.isRead && (
+                                    <Chip
+                                      label="New"
+                                      color="error"
+                                      size="small"
+                                      sx={{
+                                        height: 18,
+                                        fontSize: '0.65rem',
+                                        fontWeight: 900,
+                                        animation: 'pulse-glow 1.5s infinite alternate'
+                                      }}
+                                    />
+                                  )}
+                                  <Typography variant="caption" color="text.secondary">
+                                    {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(item.createdAt).toLocaleDateString()}
+                                  </Typography>
+                                </Stack>
 
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, color: item.isRead ? 'text.secondary' : 'text.primary' }}>
-                              {item.title}
-                            </Typography>
-                            
-                            <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: '85%' }}>
-                              {item.message}
-                            </Typography>
-
-                            {/* Mark single as read */}
-                            {!item.isRead && (
-                              <Box
-                                sx={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Avoid triggering details Drawer
-                                  handleMarkAsRead(item._id);
-                                }}
-                              >
-                                <Tooltip title="Mark read">
-                                  <IconButton color="primary">
-                                    <CheckCircleIcon />
-                                  </IconButton>
-                                </Tooltip>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1, color: item.isRead ? 'text.secondary' : 'text.primary' }}>
+                                  {item.title}
+                                </Typography>
+                                
+                                <Typography variant="body2" color="text.secondary" noWrap>
+                                  {item.message}
+                                </Typography>
                               </Box>
-                            )}
+
+                              {/* Mark single as read */}
+                              {!item.isRead && (
+                                <Box
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Avoid triggering details Drawer
+                                    handleMarkAsRead(item._id);
+                                  }}
+                                  sx={{ flexShrink: 0 }}
+                                >
+                                  <Tooltip title="Mark read">
+                                    <IconButton color="primary">
+                                      <CheckCircleIcon />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              )}
+                            </Stack>
                           </CardContent>
                         </Card>
                       );

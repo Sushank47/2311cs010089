@@ -18,17 +18,26 @@ const weightMap = {
  */
 async function getNotifications(req, res) {
   const limit = parseInt(req.query.limit, 10) || 10;
-  const filterType = req.query.type;
+  const page = parseInt(req.query.page, 10) || 1;
+  const filterType = req.query.type || req.query.notification_type;
 
   const apiUrl = `${config.BASE_URL}/evaluation-service/notifications`;
 
   try {
     const token = await getAccessToken();
+    
+    // Map parameter key to upstream standard: notification_type
+    const params = {};
+    if (limit) params.limit = limit;
+    if (page) params.page = page;
+    if (filterType) params.notification_type = filterType;
+
     const response = await axios.get(apiUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json'
       },
+      params,
       timeout: 8000
     });
 

@@ -1,110 +1,559 @@
-# Stage 2: Requirements Analysis & Specification
+# Stage 1: Notification System Design
 
-This document details the functional requirements, non-functional requirements, user stories, and requirements traceability matrix for the **Campus Notification Platform**.
-
----
-
-## 1. Functional Requirements (FRs)
-
-The following functional requirements define the capabilities that the Campus Notification Platform must provide:
-
-| Requirement ID | Module | Description | Priority |
-|---|---|---|---|
-| **FR-01** | Feed Operations | The system shall allow users to retrieve a list of notifications sorted in descending order of their creation date. | Must Have |
-| **FR-02** | Pagination | The notification query API shall support pagination parameters (`page`, `limit`) to prevent data overload. | Must Have |
-| **FR-03** | Filtering | The system shall allow users to filter notifications by category type (`Placement`, `Event`, `Result`) and read status (`true`/`false`). | Must Have |
-| **FR-04** | Status Management | The system shall allow a student to mark a single notification as read by passing its unique ID. | Must Have |
-| **FR-05** | Bulk Operations | The system shall support marking all unread notifications as read in a single batch operation. | Should Have |
-| **FR-06** | Real-Time Push | The system shall broadcast any new notification to all active clients in real-time using WebSockets (Socket.io) upon creation. | Must Have |
-| **FR-07** | Badging | The frontend application shall display an unread notification count badge that updates dynamically in real-time. | Must Have |
-| **FR-08** | Notification Creation | The system shall expose a secure POST endpoint for administrators to create and publish new notifications. | Must Have |
-| **FR-09** | Priority Triage | The system shall support notification priorities (`Low`, `Medium`, `High`, `Critical`). Notifications of `Critical` or `High` priority must be rendered in a dedicated "Priority Notifications" section. | Must Have |
-| **FR-10** | Deletion | The system shall allow administrators to delete incorrect, outdated, or expired notifications. | Should Have |
+This document outlines the system architecture, REST API design, communication contracts, schema structures, and real-time notification mechanism for the **Campus Notification Platform**.
 
 ---
 
-## 2. Non-Functional Requirements (NFRs)
-
-The following non-functional requirements define the quality attributes, constraints, and system parameters:
-
-| Requirement ID | Category | Description | Priority |
-|---|---|---|---|
-| **NFR-01** | Performance | Notification query and count APIs must respond in less than 200 milliseconds under typical load conditions. | Must Have |
-| **NFR-02** | Latency | Real-time push notifications must propagate to all connected active clients in less than 500 milliseconds from database transaction commit. | Must Have |
-| **NFR-03** | Usability | The frontend UI must be responsive, accommodating mobile, tablet, and desktop viewports, styled with Material UI (MUI). | Must Have |
-| **NFR-04** | Observability | The application backend MUST utilize the custom Axios-based `Log` middleware exclusively for tracing errors and operations. Inbuilt console logging is strictly prohibited. | Must Have |
-| **NFR-05** | Security | The application must bypass user registration/login screens for this evaluation, but backend endpoints must validate request payloads for correct type and priority parameters. | Must Have |
-| **NFR-06** | Data Consistency | Marking notifications as read must execute atomically in MongoDB, ensuring the count matches the client-side state. | Must Have |
+## 1. Core Platform Actions
+The platform is designed to resolve the campus notification latency problem for students and admins. It supports the following core actions:
+1. **Retrieve Notifications:** Fetch a paginated, filterable list of notifications (Placements, Events, Results) for a student's dashboard.
+2. **Get Unread Count:** Retrieve the number of unread notifications to dynamically update the UI notification badge.
+3. **Mark Notification as Read:** Mark a single notification as read using its unique ID.
+4. **Mark All Notifications as Read:** Bulk-update all unread notifications to read status.
+5. **Create Notification (Admin/Coordinator):** Publish and broadcast a new campus update with a category and priority level.
+6. **Delete Notification (Admin/Coordinator):** Remove old, expired, or incorrect updates from the active feed.
 
 ---
 
-## 3. User Stories & Acceptance Criteria
-
-### USN-1: Retrieve and View Announcements
-- **User Story:** As a **Student**, I want to view a list of campus announcements on my dashboard so that I stay informed about placement drives, results, and events.
-- **Story Points:** 3
-- **Sprint Assignment:** Sprint 1
-- **Acceptance Criteria:**
-  - Retrieve notifications in descending order of creation date.
-  - Notifications show the Title, Category tag (`Placement`/`Event`/`Result`), Description, Priority level, and Timestamp.
-  - UI displays an empty state illustration when there are no active notifications.
-
-### USN-2: Pagination & Load Management
-- **User Story:** As a **Student**, I want the notification feed to load incrementally using page controls so that my device doesn't lag when querying large amounts of data.
-- **Story Points:** 2
-- **Sprint Assignment:** Sprint 1
-- **Acceptance Criteria:**
-  - Retrieve results in pages of 10 items by default.
-  - Show next, previous, page number indicators, and a count of total items.
-
-### USN-3: Filtering by Type
-- **User Story:** As a **Student**, I want to filter the notification list by category so that I can quickly find placement details without scrolling past exams or event posts.
-- **Story Points:** 3
-- **Sprint Assignment:** Sprint 1
-- **Acceptance Criteria:**
-  - Filter selection tabs or chips (`All`, `Placements`, `Events`, `Results`).
-  - Active filtering triggers API query with the chosen category.
-
-### USN-4: Live Unread Count
-- **User Story:** As a **Student**, I want to see an unread badge indicator next to the notification icon so that I know immediately when new details are uploaded.
-- **Story Points:** 2
-- **Sprint Assignment:** Sprint 2
-- **Acceptance Criteria:**
-  - A red badge containing the numeric count of unread items is displayed.
-  - The badge decreases by 1 when a notification is marked read, and goes to 0 when "Mark All Read" is clicked.
-  - Real-time updates automatically increment the badge without refresh.
-
-### USN-5: Priority Categorization
-- **User Story:** As a **Student**, I want critical or high-priority notifications to be highlighted or displayed in a prominent "Priority Announcements" container so that I don't miss urgent alerts.
-- **Story Points:** 3
-- **Sprint Assignment:** Sprint 2
-- **Acceptance Criteria:**
-  - Critical/High items render in an urgent layout styled with appropriate accent colors (e.g., Red/Orange card borders).
-  - Pinned high-priority announcements appear at the top of the dashboard feed.
-
-### USN-6: Administrator Announcement Creation
-- **User Story:** As an **Administrator**, I want to submit a new announcement specifying its Title, Message, Category, and Priority level so that students receive updates immediately.
-- **Story Points:** 5
-- **Sprint Assignment:** Sprint 2
-- **Acceptance Criteria:**
-  - Form validations enforce minimum length for title/message and valid enum values.
-  - Submitting successfully saves the notification to MongoDB and broadcasts it to WebSockets.
+## 2. Common HTTP Headers & Authentication
+For the evaluation phase, users accessing APIs are pre-authorized. However, the system architecture supports standard HTTP headers:
+- `Accept: application/json` (Tells the server that the client expects JSON)
+- `Content-Type: application/json` (Required for write operations: POST, PUT)
+- `Authorization: Bearer <token>` (Optional header reserved for the logging middleware client payload authentication)
 
 ---
 
-## 4. Requirements Traceability Matrix (RTM)
+## 3. REST API Endpoints Specification
 
-This matrix maps functional requirements to user stories, API endpoints, and subsequent UAT validation cases:
+### 3.1 Retrieve Notifications (Paginated & Filterable)
+Fetches a list of notifications based on page, limit, type filter, and read status.
 
-| Req ID | User Story ID | API Endpoint | UI Component | UAT Test Case |
-|---|---|---|---|---|
-| **FR-01** | USN-1 | `GET /api/notifications` | `Dashboard.jsx`, `NotificationList.jsx` | UAT-001 |
-| **FR-02** | USN-2 | `GET /api/notifications?page=1&limit=10` | `TablePagination` / Pagination controls | UAT-002 |
-| **FR-03** | USN-3 | `GET /api/notifications?type=Placement` | `CategoryChips` / Select filters | UAT-003 |
-| **FR-04** | USN-4 | `PUT /api/notifications/:id/read` | `CheckCircleIcon` / "Mark as Read" button | UAT-004 |
-| **FR-05** | USN-4 | `PUT /api/notifications/read-all` | "Mark All as Read" button | UAT-005 |
-| **FR-06** | USN-4, USN-6 | WebSocket `new-notification` broadcast | React Context `SocketContext` | UAT-006 |
-| **FR-07** | USN-4 | `GET /api/notifications/unread-count` | `Badge` (MUI) | UAT-007 |
-| **FR-08** | USN-6 | `POST /api/notifications` | `NotificationFormModal.jsx` | UAT-008 |
-| **FR-09** | USN-5 | `GET /api/notifications` (priority filter logic) | `PriorityDashboardSection.jsx` | UAT-009 |
-| **FR-10** | USN-6 | `DELETE /api/notifications/:id` | `DeleteIcon` / Archive button | UAT-010 |
+- **Endpoint:** `/api/notifications`
+- **Method:** `GET`
+- **Headers:**
+  ```http
+  Accept: application/json
+  ```
+- **Query Parameters:**
+  - `page` (integer, default: `1`): The current page number.
+  - `limit` (integer, default: `10`): Number of records per page.
+  - `type` (string, optional: `Placement`, `Event`, `Result`): Filter by category.
+  - `read` (boolean, optional: `true`, `false`): Filter by read or unread status.
+
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "notifications": [
+        {
+          "_id": "60d5ec49f3234b3e8c253488",
+          "title": "Google Recruitment Drive 2026",
+          "message": "Google is recruiting Software Engineers. Direct link in portal. Apply before July 10.",
+          "type": "Placement",
+          "priority": "Critical",
+          "isRead": false,
+          "createdAt": "2026-07-01T11:45:00.000Z",
+          "expiresAt": "2026-07-10T23:59:59.000Z"
+        }
+      ],
+      "pagination": {
+        "totalItems": 25,
+        "totalPages": 3,
+        "currentPage": 1,
+        "limit": 10,
+        "hasNextPage": true,
+        "hasPrevPage": false
+      }
+    }
+  }
+  ```
+
+---
+
+### 3.2 Get Unread Notifications Count
+Retrieves the total count of unread notifications to display on the dashboard badge.
+
+- **Endpoint:** `/api/notifications/unread-count`
+- **Method:** `GET`
+- **Headers:**
+  ```http
+  Accept: application/json
+  ```
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "unreadCount": 12
+    }
+  }
+  ```
+
+---
+
+### 3.3 Mark Notification as Read
+Marks a single notification as read using its path parameter ID.
+
+- **Endpoint:** `/api/notifications/:id/read`
+- **Method:** `PUT`
+- **Headers:**
+  ```http
+  Accept: application/json
+  Content-Type: application/json
+  ```
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Notification marked as read.",
+    "data": {
+      "_id": "60d5ec49f3234b3e8c253488",
+      "isRead": true,
+      "updatedAt": "2026-07-01T11:46:12.000Z"
+    }
+  }
+  ```
+- **Error Response (HTTP 404 Not Found):**
+  ```json
+  {
+    "success": false,
+    "error": "Notification not found."
+  }
+  ```
+
+---
+
+### 3.4 Mark All Notifications as Read (Bulk Update)
+Updates all notifications belonging to the student to read.
+
+- **Endpoint:** `/api/notifications/read-all`
+- **Method:** `PUT`
+- **Headers:**
+  ```http
+  Accept: application/json
+  Content-Type: application/json
+  ```
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "All notifications marked as read.",
+    "data": {
+      "modifiedCount": 12
+    }
+  }
+  ```
+
+---
+
+### 3.5 Create Notification
+Broadcasts a new notification. This triggers real-time socket events.
+
+- **Endpoint:** `/api/notifications`
+- **Method:** `POST`
+- **Headers:**
+  ```http
+  Content-Type: application/json
+  Accept: application/json
+  ```
+- **Request Body Example:**
+  ```json
+  {
+    "title": "Placement Prep Workshop",
+    "message": "Mandatory resume building seminar at Audi-2 on July 2.",
+    "type": "Placement",
+    "priority": "High",
+    "expiresAt": "2026-07-02T18:00:00.000Z"
+  }
+  ```
+- **Response (HTTP 201 Created):**
+  ```json
+  {
+    "success": true,
+    "message": "Notification created successfully.",
+    "data": {
+      "_id": "60d5ec49f3234b3e8c253490",
+      "title": "Placement Prep Workshop",
+      "message": "Mandatory resume building seminar at Audi-2 on July 2.",
+      "type": "Placement",
+      "priority": "High",
+      "isRead": false,
+      "createdAt": "2026-07-01T11:48:00.000Z",
+      "expiresAt": "2026-07-02T18:00:00.000Z"
+    }
+  }
+  ```
+- **Error Response (HTTP 400 Bad Request):**
+  ```json
+  {
+    "success": false,
+    "error": "Validation failed: 'title' is required; 'type' must be one of [Placement, Event, Result]."
+  }
+  ```
+
+---
+
+### 3.6 Delete Notification
+Deletes a notification from the collection database.
+
+- **Endpoint:** `/api/notifications/:id`
+- **Method:** `DELETE`
+- **Headers:**
+  ```http
+  Accept: application/json
+  ```
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Notification deleted successfully."
+  }
+  ```
+
+---
+
+## 4. Formal JSON Schema Architecture
+
+Below are the formal JSON Schema descriptions for the resource objects.
+
+### 4.1 Notification Resource Schema
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Notification",
+  "type": "object",
+  "properties": {
+    "_id": {
+      "type": "string",
+      "description": "Unique identifier generated by MongoDB (ObjectId)"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "description": "Short heading of the notification"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 1000,
+      "description": "Detailed description of the announcement"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["Placement", "Event", "Result"],
+      "description": "Category of the notification"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High", "Critical"],
+      "default": "Medium",
+      "description": "Urgency level of the notification"
+    },
+    "isRead": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indicates whether the student has viewed this item"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp representing creation time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp for auto-expiration or archiving"
+    }
+  },
+  "required": ["title", "message", "type"]
+}
+```
+
+---
+
+## 5. Real-Time Notification Mechanism (Socket.io)
+
+To avoid performance overhead from constant REST HTTP polling, the platform employs a real-time event distribution layer based on **WebSockets** using **Socket.io**.
+
+### 5.1 Architecture DFD
+```
+  ┌──────────────┐           (1) Create Post          ┌───────────────┐
+  │  Admin UI    ├───────────────────────────────────>│  Express API  │
+  └──────────────┘                                    └───────┬───────┘
+                                                              │
+                                                         (2) Write
+                                                              ▼
+  ┌──────────────┐      (4) Broadcast "new-notification" ┌────┴──────────┐
+  │ Student App  │<───────────────────────────────────┤  Socket.io    │
+  │ (React-MUI)  │                                    │  Server Layer │
+  └──────────────┘                                    └───────────────┘
+```
+
+### 5.2 Real-time Sequence of Events
+1. **Client Registration:**
+   - The React UI client initializes the `socket.io-client` connection on mounting.
+   - The connection joins a default channel `campus-alerts`.
+2. **Server-Side Trigger:**
+   - Upon a successful database save in `POST /api/notifications`, the route controller executes:
+     ```javascript
+     io.to('campus-alerts').emit('new-notification', newNotificationData);
+     ```
+3. **Payload Structure for 'new-notification' Event:**
+   ```json
+   {
+     "_id": "60d5ec49f3234b3e8c253490",
+     "title": "B.Tech VI Sem Results Out",
+     "message": "Results for B.Tech VI Sem Regular Examinations have been published.",
+     "type": "Result",
+     "priority": "High",
+     "isRead": false,
+     "createdAt": "2026-07-01T11:48:00.000Z"
+   }
+   ```
+4. **Client-Side React Handler:**
+   - The custom hook listens for the event:
+     ```javascript
+     socket.on('new-notification', (notification) => {
+       // 1. Update state array in UI
+       // 2. Play subtle sound or trigger dynamic slide-in alert
+       // 3. Increment unread counter badge
+     });
+     ```
+
+---
+---
+
+# Stage 2: Database Design & Scaling
+
+This section covers the persistent storage choice, schema specifications, scaling strategy under high data volumes, and corresponding database query implementations.
+
+## 1. Persistent Storage (DB) Choice & Explanation
+
+For the **Campus Notification Platform**, we select **MongoDB** (NoSQL Document Store) as the persistent storage engine.
+
+### Rationale for choosing MongoDB:
+1. **Schema Flexibility:** Campus notifications can evolve. For instance, a `Placement` notification might later require fields like `packageLPA` (number) or `registrationLink` (string), whereas a `Result` notification might require `semester` or `batch`. MongoDB's dynamic schema easily supports this polymorphism without complex SQL joins.
+2. **High Write and Read Throughput:** When notifications are broadcasted, they trigger instant lookups and updates (e.g. marking as read). MongoDB provides memory-mapped files and indexing that allow sub-millisecond retrieval.
+3. **JSON Alignment:** MongoDB stores documents natively in BSON, which aligns perfectly with Express.js backend endpoints and React client payloads, eliminating the Object-Relational Impedance Mismatch.
+4. **Built-in Expiration (TTL Indexing):** Notifications naturally expire after a deadline (e.g. event end date or placement registration closing). MongoDB has native Time-To-Live (TTL) index features that auto-delete documents, keeping storage footprints light.
+
+---
+
+## 2. Applicable DB Schema Definition
+
+Here is the database collection structure. We write it using **Mongoose** schema declaration syntax:
+
+```javascript
+const mongoose = require('mongoose');
+
+const notificationSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+    minlength: 3,
+    maxlength: 100
+  },
+  message: {
+    type: String,
+    required: true,
+    trim: true,
+    minlength: 5,
+    maxlength: 1000
+  },
+  type: {
+    type: String,
+    required: true,
+    enum: ['Placement', 'Event', 'Result']
+  },
+  priority: {
+    type: String,
+    required: true,
+    enum: ['Low', 'Medium', 'High', 'Critical'],
+    default: 'Medium'
+  },
+  isRead: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  expiresAt: {
+    type: Date,
+    required: false
+  }
+});
+
+// INDEXES FOR OPTIMAL RETRIEVAL
+// 1. Compound index for filtered retrieval and chronological sorting
+notificationSchema.index({ type: 1, createdAt: -1 });
+
+// 2. Index for unread count speed
+notificationSchema.index({ isRead: 1 });
+
+// 3. TTL index for auto-deletion of expired notifications (archives them after expiration)
+notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const Notification = mongoose.model('Notification', notificationSchema);
+module.exports = Notification;
+```
+
+---
+
+## 3. Data Volume Scale Challenges & Solutions
+
+As the number of students and notifications grows over multiple academic semesters, the database will face scalability bottlenecks.
+
+### 3.1 Expected Problems:
+1. **Unread Count Query Latency:** The unread count API is called on every dashboard mount. Doing a collection scan (`db.notifications.countDocuments({ isRead: false })`) across millions of documents becomes very slow.
+2. **Offset Pagination Lag:** Standard skip-limit offset pagination (`skip(page * limit).limit(limit)`) scans and discards preceding documents, resulting in linear lookup degradation as the page number increases.
+3. **Index Memory Overhead:** If we place indices on too many columns, the cumulative index size will exceed RAM, causing MongoDB to page indices to disk (resulting in major disk I/O latency).
+
+### 3.2 Solutions:
+1. **Counter Caching (Redis):** Cache the unread count in a Redis key. Increment or decrement it on notification creation or read action using atomic operations (`INCR`/`DECR`), keeping database reads to zero for navigation badges.
+2. **Cursor-Based Pagination:** Instead of offset pagination, query using cursors (`nextId` or `createdAt` timestamp limit), executing:
+   ```javascript
+   db.notifications.find({ createdAt: { $lt: lastSeenTimestamp } }).limit(limit)
+   ```
+   This uses the compound index directly without scanning skipped documents.
+3. **Time-To-Live (TTL) Archiving:** Automatically prune active notifications by enabling MongoDB's TTL index on `expiresAt` or run a daily cron script that archives older records into a separate cold-storage historical collection.
+
+---
+
+## 4. Database Query Implementations (NoSQL)
+
+Here are the specific MongoDB Shell and Mongoose queries matching our Stage 1 REST API contracts.
+
+### 4.1 Retrieve Paginated Notifications (with Type and Read Status Filters)
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.find({
+    type: "Placement",
+    isRead: false
+  })
+  .sort({ createdAt: -1 })
+  .skip(10)
+  .limit(10)
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const getNotifications = async (queryFilters, page = 1, limit = 10) => {
+    const filter = {};
+    if (queryFilters.type) filter.type = queryFilters.type;
+    if (queryFilters.read !== undefined) filter.isRead = queryFilters.read;
+
+    const skipCount = (page - 1) * limit;
+
+    const [notifications, totalItems] = await Promise.all([
+      Notification.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skipCount)
+        .limit(limit)
+        .lean(),
+      Notification.countDocuments(filter)
+    ]);
+
+    return {
+      notifications,
+      pagination: {
+        totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        currentPage: page,
+        limit
+      }
+    };
+  };
+  ```
+
+### 4.2 Get Unread Count
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.countDocuments({ isRead: false })
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const getUnreadCount = async () => {
+    return await Notification.countDocuments({ isRead: false });
+  };
+  ```
+
+### 4.3 Mark Single Notification as Read
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.updateOne(
+    { _id: ObjectId("60d5ec49f3234b3e8c253488") },
+    { $set: { isRead: true } }
+  )
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const markAsRead = async (id) => {
+    return await Notification.findByIdAndUpdate(
+      id,
+      { $set: { isRead: true } },
+      { new: true }
+    );
+  };
+  ```
+
+### 4.4 Mark All Notifications as Read (Bulk Update)
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.updateMany(
+    { isRead: false },
+    { $set: { isRead: true } }
+  )
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const markAllAsRead = async () => {
+    const result = await Notification.updateMany(
+      { isRead: false },
+      { $set: { isRead: true } }
+    );
+    return { modifiedCount: result.modifiedCount };
+  };
+  ```
+
+### 4.5 Create Notification
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.insertOne({
+    title: "Placement Prep Workshop",
+    message: "Mandatory resume building seminar at Audi-2 on July 2.",
+    type: "Placement",
+    priority: "High",
+    isRead: false,
+    createdAt: new Date(),
+    expiresAt: new Date("2026-07-02T18:00:00.000Z")
+  })
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const createNotification = async (data) => {
+    return await Notification.create({
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      priority: data.priority || 'Medium',
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null
+    });
+  };
+  ```
+
+### 4.6 Delete Notification
+- **MongoDB raw query:**
+  ```javascript
+  db.notifications.deleteOne({ _id: ObjectId("60d5ec49f3234b3e8c253488") })
+  ```
+- **Mongoose Service Layer:**
+  ```javascript
+  const deleteNotification = async (id) => {
+    return await Notification.findByIdAndDelete(id);
+  };
+  ```
